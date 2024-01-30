@@ -3,7 +3,7 @@
 # loading all packages, functions and the Kobo tool
 if (!require("pacman")) install.packages("pacman")
 pacman::p_load(docstring, tidyverse, readxl, writexl, openxlsx, stringr, 
-               sf, geosphere, qdapRegex, cluster, randomcoloR, svDialogs, scales)
+               sf, geosphere, qdapRegex, cluster, randomcoloR, svDialogs, scales, knitr)
 
 source("src/utils/misc_utils.R")
 source("src/utils/check_kobo.R")
