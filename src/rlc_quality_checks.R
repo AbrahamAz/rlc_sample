@@ -23,14 +23,143 @@ check_rlc_clusters <- function(sampling_data = sampling_data,
   
   ## check if every cluster_ID have 3 HH
   check_3_hh <- rlc_data %>% 
-    group_by(cluster_ID) %>% 
+    group_by(!!sym(column_cluster_id_rlc)) %>% 
     summarise(HHs = n()) %>% 
     mutate(flag = HHs != 3)
   
   if(any(check_3_hh$flag)) {
-    cat(paste("However, not all your clusters have a total of 3 HHs."))
-    kable(check_3_hh %>% filter(flag) %>% select(-flag))
+    cat(paste("However, not all your clusters have a total of 3 HHs.\n\n"))
+    print(knitr::kable(check_3_hh %>% filter(flag) %>% select(-flag)))
   } else {
-    cat(paste("All your clusters have a total of 3 HHs."))
+    cat(paste("All your clusters have a total of 3 HHs.\n\n"))
   }
+}
+
+## Function to create the polygon of the geoshape area
+create_rlc_area_geoshape <- function(area_data = area_data,
+                                     geoshape_column_name = "geoshape") {
+  ## Make sure data is called
+  if(is.null(area_data)) stop("Make sure that the area data exits.")
+  
+  # Retrieve Geoshape area
+  geoshape_df <- as.data.frame(do.call(rbind, strsplit(matrix(unlist(strsplit(area_data[[geoshape_column_name]], ";")),
+                                                              ncol = 1, byrow = T), " "))) %>% 
+    select(V1,V2) %>% 
+    mutate_all(., as.numeric) %>% 
+    mutate(`.id` = 1)
+  
+  # create Geoshape for the sampled area
+  geoshape_sf <- sfheaders::sf_polygon(
+    obj = geoshape_df
+    , polygon_id = ".id"
+    , x = "V2"
+    , y = "V1"
+  ) %>% st_set_crs(4326)
+  return(geoshape_sf)
+}
+
+## Check if cluster_IDs are inside the sampled area
+check_clusters_in_area <- function(area_data = area_data, 
+                                   rlc_data = rlc_data,
+                                   column_cluster_id_rlc = "cluster_ID",
+                                   column_cluster_lat = "_cluster_geopoint_latitude",
+                                   column_cluser_long = "_cluster_geopoint_longitude") {
+  
+  # Make sure data is called
+  if(is.null(area_data) | is.null(rlc_data)) stop("Make sure that both the area and the rlc data exits.")
+  
+  # create the area of the geoshape file
+  area_polygon <- create_rlc_area_geoshape(area_data = area_data)
+  
+  # read the cluster_ID points from rlc and check if points are in polygon
+  cluster_points <- rlc_data %>% 
+    select(column_cluster_id_rlc, column_cluster_lat,column_cluser_long) %>% 
+    unique() %>% 
+    mutate_at(vars(c(column_cluster_lat,column_cluser_long)), as.numeric) %>% 
+    st_as_sf(coords = c(column_cluser_long,column_cluster_lat), crs = 4326) %>% 
+    mutate(intersect = st_intersects(geometry, area_polygon, sparse = F),
+           distance = ifelse(!intersect, st_distance(geometry, area_polygon),0)) %>% 
+    mutate(intersect = ifelse(distance > 50, F,T))
+  
+  if(nrow(cluster_points %>% filter(!intersect)) > 0) {
+    cat(paste("Attention:\nThe following cluster IDs are located outside of the sampling area \nwith a distance larger than 50m.\n"))
+    print(knitr::kable(cluster_points %>% filter(!intersect) %>% select(-intersect) %>%st_drop_geometry()))
+  } else{
+    cat("All your cluster points are located inside the sampling area.")
+  }
+  # create quick map to show the polygon and the points with the cluster IDs
+  map <- leaflet::leaflet() %>% 
+    leaflet::addTiles() %>% 
+    leaflet::addPolygons(data = area_polygon) %>% 
+    leaflet::addCircleMarkers(
+      data = cluster_points %>% filter(distance<50),
+      fillColor = "#EE5859",
+      fillOpacity = 1,
+      stroke = F,
+      popup = ~ cluster_points[[column_cluster_id_rlc]]
+      # clusterOptions = leaflet::markerClusterOptions()
+    ) %>% 
+    leaflet::addCircleMarkers(
+      data = cluster_points %>% filter(distance>50),
+      fillColor = "yellow",
+      fillOpacity = 1,
+      stroke = F,
+      popup = ~ cluster_points[[column_cluster_id_rlc]]
+    ) 
+  return(map)
+}
+
+
+## Check if hh points are inside the sampled area
+check_hh_in_area <- function(area_data = area_data, 
+                             rlc_data = rlc_data,
+                             column_cluster_id_rlc = "cluster_ID",
+                             column_cluster_lat = "_cluster_geopoint_latitude",
+                             column_cluser_long = "_cluster_geopoint_longitude",
+                             column_hh_lat = "_household_geopoint_latitude",
+                             column_hh_long = "_household_geopoint_longitude") {
+  
+  # Make sure data is called
+  if(is.null(area_data) | is.null(rlc_data)) stop("Make sure that both the area and the rlc data exits.")
+  
+  # create the area of the geoshape file
+  area_polygon <- create_rlc_area_geoshape(area_data = area_data)
+  
+  # read the household points from rlc and check if points are in polygon
+  hh_points <- rlc_data %>% 
+    select(column_cluster_id_rlc, column_hh_lat,column_hh_long) %>% 
+    group_by(!!sym(column_cluster_id_rlc)) %>% 
+    mutate(hh_id = paste0(!!sym(column_cluster_id_rlc), "_", row_number())) %>% 
+    mutate_at(vars(c(column_hh_lat,column_hh_long)), as.numeric) %>% 
+    st_as_sf(coords = c(column_hh_long,column_hh_lat), crs = 4326) %>% 
+    mutate(intersect = st_intersects(geometry, area_polygon, sparse = F),
+           distance = ifelse(!intersect, st_distance(geometry, area_polygon),0)) %>% 
+    mutate(intersect = ifelse(distance > 50, F,T))
+  
+  if(nrow(hh_points %>% filter(!intersect)) > 0) {
+    cat(paste("Attention:\nThe following households are located outside of the sampling area \nwith a distance larger than 50m.\n"))
+    print(knitr::kable(hh_points %>% filter(!intersect) %>% select(-intersect) %>%st_drop_geometry()))
+  } else{
+    cat("All your hh points are located inside the sampling area.")
+  }
+  # create quick map to show the polygon and the points with the cluster IDs
+  map <- leaflet::leaflet() %>% 
+    leaflet::addTiles() %>% 
+    leaflet::addPolygons(data = area_polygon) %>% 
+    leaflet::addCircleMarkers(
+      data = hh_points %>% filter(distance<50),
+      fillColor = "#EE5859",
+      fillOpacity = 1,
+      stroke = F,
+      popup = ~ hh_points$hh_id,
+      clusterOptions = leaflet::markerClusterOptions(maxClusterRadius = 20)
+    ) %>% 
+    leaflet::addCircleMarkers(
+      data = hh_points %>% filter(distance>50),
+      fillColor = "yellow",
+      fillOpacity = 1,
+      stroke = F,
+      popup = ~ hh_points$hh_id
+    ) 
+  return(map)
 }
