@@ -12,10 +12,6 @@ raw_main <- read_xlsx("data/inputs/kobo_export/raw_data.xlsx",col_types = "text"
 raw_households <- read_xlsx("data/inputs/kobo_export/raw_data.xlsx", col_types = "text", sheet = "households")
 
 
-
-
-
-
 rlc_data <- raw_households %>% 
   left_join(select(raw_main, c(`_uuid`,cluster_ID,
                                `_cluster_geopoint_latitude`,
@@ -37,5 +33,5 @@ check_hh_in_area(area_data = area_data, rlc_data = rlc_data)
 ## CHECK the hh points are close to their generated waypoints (50 m threshold)
 check_hh_to_waypoint_distance(rlc_data = rlc_data)
 
-
-
+## CHECK the hh points are close to their generated waypoints (50 m threshold)
+check_hh_unique_to_waypoint(rlc_data=rlc_data)

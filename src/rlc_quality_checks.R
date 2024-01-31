@@ -18,7 +18,7 @@ check_waypoints_to_cluster_id <- function(sampling_data = sampling_data,
     cat(paste(paste("Attention: \nThe following cluster IDs are missing from the rlc list", difference_rlc_to_sample, sep = " "),
               paste("The following cluster IDs might be matching from the sampling", difference_sample_to_rlc, sep = " "), sep = '\n'))
   } else {
-    cat("All you clusters from the sampling frame are identical to the ones in the rlc data!!!\n\n")
+    cat("All your clusters from the sampling frame are identical to the ones in the rlc data!!!\n\n")
   }
   
   ## check if every cluster_ID have 3 HH
@@ -93,17 +93,23 @@ check_waypoints_in_area <- function(area_data = area_data,
     leaflet::addPolygons(data = area_polygon) %>% 
     leaflet::addCircleMarkers(
       data = cluster_points %>% filter(distance<50),
-      fillColor = "#EE5859",
-      fillOpacity = 1,
+      fillColor = "#EE5858",
+      fillOpacity = 0.8,
       stroke = T,
+      color = "#e1e1e1",
+      weight= 1,
+      radius = 4,
       popup = ~ cluster_points[[column_waypoints_id_rlc]]
       # clusterOptions = leaflet::markerClusterOptions()
     ) %>% 
     leaflet::addCircleMarkers(
       data = cluster_points %>% filter(distance>50),
       fillColor = "yellow",
-      fillOpacity = 1,
+      fillOpacity = 0.8,
       stroke = T,
+      color = "#e1e1e1",
+      weight= 1,
+      radius = 4,
       popup = ~ cluster_points[[column_waypoints_id_rlc]]
     ) 
   return(map)
@@ -181,17 +187,23 @@ check_hh_in_area <- function(area_data = area_data,
     leaflet::addPolygons(data = area_polygon) %>% 
     leaflet::addCircleMarkers(
       data = hh_points %>% filter(distance<50),
-      fillColor = "#EE5859",
-      fillOpacity = 1,
+      fillColor = "#EE5858",
+      fillOpacity = 0.8,
       stroke = T,
+      color = "#e1e1e1",
+      weight= 1,
+      radius = 4,
       popup = ~ hh_points$hh_id,
       clusterOptions = leaflet::markerClusterOptions(maxClusterRadius = 20)
     ) %>% 
     leaflet::addCircleMarkers(
       data = hh_points %>% filter(distance>50),
       fillColor = "yellow",
-      fillOpacity = 1,
+      fillOpacity = 0.8,
       stroke = T,
+      color = "#e1e1e1",
+      weight= 1,
+      radius = 4,
       popup = ~ hh_points$hh_id
     ) 
   return(map)
@@ -233,7 +245,6 @@ check_hh_to_waypoint_distance <- function(rlc_data = rlc_data,
   data_map <- left_join(hh_data %>% as_data_frame(),waypoints%>% as_data_frame(), by = column_waypoints_id_rlc,relationship = "many-to-many") %>% unique() %>%  
     mutate(line = st_sfc(mapply(function(a,b) {st_cast(st_union(a,b), "LINESTRING")}, geometry.x, geometry.y, SIMPLIFY = F))) 
   
-  
   # create the area of the geoshape file
   area_polygon <- create_rlc_area_geoshape(area_data = area_data)
   
@@ -244,7 +255,7 @@ check_hh_to_waypoint_distance <- function(rlc_data = rlc_data,
     leaflet::addCircleMarkers(
       data = data_map$geometry.y,
       fillColor = "#a1a1a1",
-      fillOpacity = 0.2,
+      fillOpacity = 0.8,
       stroke = T,
       color = "#191919",
       weight= 1,
@@ -262,5 +273,109 @@ check_hh_to_waypoint_distance <- function(rlc_data = rlc_data,
   return(map)
 }
 
+## Function to check if any hh is falling in a different 3 closest hh waypoint
+check_hh_unique_to_waypoint <- function(rlc_data = rlc_data,
+                                        column_waypoints_id_rlc = "cluster_ID",
+                                        column_waypoints_lat = "_cluster_geopoint_latitude",
+                                        column_waypoints_long = "_cluster_geopoint_longitude",
+                                        column_hh_lat = "_household_geopoint_latitude",
+                                        column_hh_long = "_household_geopoint_longitude") {
+  # Make sure data is called
+  if(is.null(rlc_data)) stop("Make sure that both the rlc data exits.")
+  
+  hh_data <- rlc_data %>% 
+    select(column_waypoints_id_rlc,column_hh_lat,column_hh_long) %>% 
+    st_as_sf(coords = c(column_hh_long,column_hh_lat), crs = 4326) 
+  # Join sampling data with 
+  waypoints <- rlc_data %>% 
+    select(column_waypoints_id_rlc,column_waypoints_lat,column_waypoints_long) %>% 
+    st_as_sf(coords = c(column_waypoints_long,column_waypoints_lat), crs = 4326)
+  
+  # Join the two data together and calculate the distance between the two points
+  data_max_distance <- left_join(hh_data %>% as_data_frame(),waypoints%>% as_data_frame(), by = column_waypoints_id_rlc,relationship = "many-to-many") %>% 
+    mutate(distance = as.numeric(st_distance(geometry.x,geometry.y, by_element = T))) %>% unique() %>% 
+    group_by(!!sym(column_waypoints_id_rlc))%>% 
+    filter(distance == max(distance)) %>% 
+    mutate(buffer = st_buffer(geometry.y, distance,nQuadSegs=120)) 
+  
+  # check buffer intersect
+  buffer_intersect <- st_intersects(data_max_distance$buffer, data_max_distance$buffer) %>% unique
+  buffer_intersect <- buffer_intersect[lapply(buffer_intersect, length) == 2]
+  suppressWarnings(list_buffer_intersect <- as.data.frame(sapply(buffer_intersect, function(x) str_split(x," "))) %>% 
+                       mutate_all(., as.numeric) %>% 
+                       t() %>% as.data.frame() %>% 
+                       mutate_all(., ~sapply(.,function(x){
+                         data_max_distance[[column_waypoints_id_rlc]][x]
+                       })) %>% 
+                     rename(intersecting = "V1",clusters = "V2")
+                     )
+  # If buffer intersect, check if hhs are sharing clusters
+  if(nrow(list_buffer_intersect)>0){
+    data_distance <- left_join(hh_data %>% as_data_frame(),waypoints%>% as_data_frame(), by = column_waypoints_id_rlc,relationship = "many-to-many") %>% 
+      mutate(distance = as.numeric(st_distance(geometry.x,geometry.y, by_element = T))) %>% unique() %>% 
+      group_by(!!sym(column_waypoints_id_rlc)) %>% 
+      mutate(hh_id = paste0(!!sym(column_waypoints_id_rlc), "_", row_number())) 
+    hh_intersect_buffer <- st_intersects(data_distance$geometry.x, data_max_distance$buffer)
+    hh_intersect_buffer <- hh_intersect_buffer[lapply(hh_intersect_buffer, length) == 2]
+    suppressWarnings(list_hh_buffer_intersect <- as.data.frame(sapply(hh_intersect_buffer, function(x) str_split(x," "))) %>% 
+                       mutate_all(., as.numeric) %>% 
+                       t() %>% as.data.frame() %>% 
+                       mutate(V1 = sapply(.,function(x){data_distance[[hh_id]][x]}),
+                              V2 = sapply(.,function(x){data_distance[[column_waypoints_id_rlc]][x]}))%>% 
+                       rename(household = "V1",clusters = "V2")
+    )
+  }
+  
+  if(nrow(list_buffer_intersect)>0 & nrow(list_hh_buffer_intersect) > 0){
+    cat(paste("Attention:\nThe following clusters have their buffer zone intersecting\n"))
+    print(knitr::kable(list_buffer_intersect))
+    cat(paste("\nAnd the following hh cluster IDs are falling in other clusters buffers\n"))
+    print(knitr::kable(list_hh_buffer_intersect))
+  } else if (nrow(list_buffer_intersect)>0 & nrow(list_hh_buffer_intersect) == 0){
+    cat(paste("Attention:\nThe following clusters have their buffer zone intersecting\n but none of the hh are sharing clusters\n"))
+    print(knitr::kable(list_buffer_intersect))
+  } else {
+    cat(paste("All clusters are unique and do not intersect with each other."))
+  }
+  
+  # create the lines between the waypoints and the hhs
+  data_map <- left_join(hh_data %>% as_data_frame(),waypoints%>% as_data_frame(), by = column_waypoints_id_rlc,relationship = "many-to-many") %>% unique() %>%  
+    mutate(distance = as.numeric(st_distance(geometry.x,geometry.y, by_element = T))) %>% unique() %>% 
+    group_by(!!sym(column_waypoints_id_rlc))%>% 
+    mutate(line = st_sfc(mapply(function(a,b) {st_cast(st_union(a,b), "LINESTRING")}, geometry.x, geometry.y, SIMPLIFY = F))) 
+  
+  # create the area of the geoshape file
+  area_polygon <- create_rlc_area_geoshape(area_data = area_data)
+  
+  # Create map
+  map <- leaflet::leaflet() %>% 
+    leaflet::addTiles() %>% 
+    leaflet::addPolygons(data = area_polygon) %>% 
+    leaflet::addPolygons(data = data_max_distance$buffer,
+                         stroke = T,
+                         fillColor = "#EE5859",
+                         fillOpacity = 0.8,
+                         color = "#191919",
+                         weight= 1) %>% 
+    leaflet::addCircleMarkers(
+      data = data_max_distance$geometry.y,
+      fillColor = "#a1a1a1",
+      fillOpacity = 0.8,
+      stroke = T,
+      color = "#191919",
+      weight= 1,
+      radius = 4
+    ) %>% 
+    leaflet::addPolylines(
+      data = data_map$line,
+      color = "black",
+      fillColor = "black",
+      opacity = 1,
+      stroke = T,
+      weight = 2
+    ) 
+  
+  return(map)
+}
 
 
