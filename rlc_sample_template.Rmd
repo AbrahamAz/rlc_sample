@@ -1,6 +1,6 @@
 ---
-title: "`r strings['dataset.name']`"
-subtitle: "RLC Quality Check Report and Weighting Production"
+title: "RLC Quality Check Report and Weighting Production"
+subtitle: "`r strings['dataset.name.short']`"
 output: html_document
 ---
 
@@ -48,19 +48,22 @@ Along this HTML document, you will find in the output/ folder an excel file.
 
 In case you don't find this file, this means that there was some issues during the execution of the script. However, I am pretty sure if the script give a success message, this means that a file should also be included there. 
 
-### <strong>PLEASE ATTENTION</strong>
+#### <strong>PLEASE ATTENTION</strong>
 
-Before using the final outputted weight in the file, please make sure that you check all the tabs of this quality check report and confirm a successful methodology implementation. 
+<h4 style='color: "red"'>Before using the final outputted weight in the file, please make sure that you check all the tabs of this quality check report and confirm a successful methodology implementation. </h4>
 
 ### What to find in this output
 
 In this output you will find the following tabs:
 
 * <strong>ID MATCHING</strong>: <em>Check Cluster_ID between sampling and rlc data are matching</em>
-* <strong>Cluster inside Area</strong>: <em> Check Clusters inside sampling area</em>
-
-Continue here :)
-
+* <strong>Clusters inside Area</strong>: <em> Check Clusters are inside the sampling area (50m threshold)</em>
+* <strong>Clusters follow RLC sampling</strong>: <em> Check assessed clusters are random and follow the sampling (50m threshold)</em>
+* <strong>HHs inside sampling area</strong>: <em> Check assessed HHs are inside the sampling are (50m threshold)</em>
+* <strong>Distance HHs to clusters</strong>: <em> Check the distance between the assessed HHs and the sampled cluster points (50m threshold)</em>
+* <strong>Duplicated clusters/HHs</strong>: <em> Check duplication between clusters and check if clusters share same HHs.</em>
+* <strong>Household Density</strong>: <em> Calculate HH Density & Cluster Weights</em>
+* <strong>Estimation of Population</strong>: <em> Estimate Population of Sampled Area. (Under Revision)</em>
 
 ### Feedback
 
@@ -108,7 +111,7 @@ if(is.null(map_1)){
 }
 ```
 
-## Check assessed clusters are random
+## Clusters follow RLC sampling
 
 This part is checking if the field team did follow the Sampling methodology and assessed the right locations.
 ```{r}
@@ -117,21 +120,21 @@ check_waypoints_to_cluster_distance(sampling_data = sampling_data, rlc_data = rl
 ```
 In case any point is was not in teh 50 m buffer, a map will be generated below to show the difference.
 
-## Check assessed HHs inside sampling area
+## HHs inside sampling area
 
 ```{r}
 ## CHECK the hh points are inside the polygon (50 m threshold)
 check_hh_in_area(area_data = area_data, rlc_data = rlc_data)
 ```
 
-## Check distance HHs to cluster point
+## Distance HHs to clusters
 
 ```{r}
 ## CHECK the hh points are close to their generated waypoints (50 m threshold)
 check_hh_to_waypoint_distance(rlc_data = rlc_data,area_data = area_data)
 ```
 
-## Check duplicated clusters and HHs
+## Duplicated clusters and HHs
 
 ```{r}
 ## CHECK the hh are unique to the cluster
