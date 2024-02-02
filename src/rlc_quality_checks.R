@@ -34,7 +34,7 @@ check_waypoints_to_cluster_id <- function(sampling_data = sampling_data,
   
   if(any(check_3_hh$flag)) {
     cat(paste("\n\nHowever, not all your clusters have a total of 3 HHs.\n\n"))
-    print(knitr::kable(check_3_hh %>% filter(flag) %>% select(-flag)))
+    print(knitr::kable(check_3_hh %>% filter(flag) %>% dplyr::select(-flag)))
   } else {
 
     cat(paste("\n\nAll your clusters have a total of 3 HHs.\n\n"))
@@ -52,7 +52,7 @@ create_rlc_area_geoshape <- function(area_data,
   # Retrieve Geoshape area
   geoshape_df <- as.data.frame(do.call(rbind, strsplit(matrix(unlist(strsplit(area_data[[geoshape_column_name]], ";")),
                                                               ncol = 1, byrow = T), " "))) %>% 
-    select(V1,V2) %>% 
+    dplyr::select(V1,V2) %>% 
     mutate_all(., as.numeric) %>% 
     mutate(`.id` = 1)
   
@@ -72,7 +72,8 @@ check_waypoints_in_area <- function(area_data,
                                     column_waypoints_id_rlc = "cluster_ID",
                                     column_waypoints_lat = "cluster_lat",
                                     column_waypoints_long = "cluster_long",
-                                    geoshape_column_name = "geoshape") {
+                                    geoshape_column_name = "geoshape",
+                                    create_heat_map = F) {
   
   # Make the dataset dataframes
   area_data <- as.data.frame(area_data)
@@ -90,7 +91,7 @@ check_waypoints_in_area <- function(area_data,
   
   # read the cluster_ID points from rlc and check if points are in polygon
   cluster_points <- rlc_data %>% 
-    select(column_waypoints_id_rlc, column_waypoints_lat,column_waypoints_long) %>% 
+    dplyr::select(column_waypoints_id_rlc, column_waypoints_lat,column_waypoints_long) %>% 
     unique() %>% 
     mutate_at(vars(c(column_waypoints_lat,column_waypoints_long)), as.numeric) %>% 
     st_as_sf(coords = c(column_waypoints_long,column_waypoints_lat), crs = 4326) %>% 
@@ -100,36 +101,81 @@ check_waypoints_in_area <- function(area_data,
   
   if(nrow(cluster_points %>% filter(!intersect)) > 0) {
     cat(paste("Attention:\nThe following cluster IDs are located outside of the sampling area \nwith a distance larger than 50m.\n"))
-    print(knitr::kable(cluster_points %>% filter(!intersect) %>% select(-intersect) %>%st_drop_geometry()))
+    print(knitr::kable(cluster_points %>% filter(!intersect) %>% dplyr::select(-intersect) %>%st_drop_geometry()))
   } else{
-    cat("All your cluster points are located inside the sampling area.")
+    cat("All your cluster points are located inside the sampling area.\n\n")
   }
-  # create quick map to show the polygon and the points with the cluster IDs
-  map <- leaflet::leaflet() %>% 
-    leaflet::addTiles() %>% 
-    leaflet::addPolygons(data = area_polygon) %>% 
-    leaflet::addCircleMarkers(
-      data = cluster_points %>% filter(distance<50),
-      fillColor = "#EE5858",
-      fillOpacity = 0.8,
-      stroke = T,
-      color = "#e1e1e1",
-      weight= 2,
-      radius = 5,
-      popup = ~ cluster_points[[column_waypoints_id_rlc]]
-      # clusterOptions = leaflet::markerClusterOptions()
-    ) %>% 
-    leaflet::addCircleMarkers(
-      data = cluster_points %>% filter(distance>50),
-      fillColor = "yellow",
-      fillOpacity = 0.8,
-      stroke = T,
-      color = "#e1e1e1",
-      weight= 2,
-      radius = 5,
-      popup = ~ cluster_points[[column_waypoints_id_rlc]]
-    ) 
-  return(map)
+
+  
+  if(create_heat_map){
+    cat("Generating the map:.\n\n")
+    pb <- txtProgressBar(min = 0, max = 100, style = 3)
+    heat <- rlc_data %>% 
+      dplyr::select(column_waypoints_id_rlc,column_waypoints_lat,column_waypoints_long) %>% 
+      mutate_at(vars(c(column_waypoints_lat,column_waypoints_long)), as.numeric) %>% 
+      unique 
+    setTxtProgressBar(pb, 20)
+    heat <- data.table::setDT(heat)
+    info <- st_bbox(area_polygon)
+    
+    heat_kde <- KernSmooth::bkde2D(heat[ , list(heat[[column_waypoints_long]],heat[[column_waypoints_lat]])],
+                                   range.x = list(c(as.numeric(info$xmin[[1]]),
+                                                    as.numeric(info$xmax[[1]])),
+                                                  c(as.numeric(info$ymin[[1]]),
+                                                    as.numeric(info$ymax[[1]]))),
+                                   bandwidth = c(250/as.numeric(st_area(area_polygon)),
+                                                 250/as.numeric(st_area(area_polygon))),
+                                   gridsize = c(1300,1300))
+    setTxtProgressBar(pb, 40)
+    kerelDensityRaster <- raster::raster(list(x=heat_kde$x1,y=heat_kde$x2,z = heat_kde$fhat))
+    
+    kerelDensityRaster_2 <- raster::crop(kerelDensityRaster,raster::extent(area_polygon))
+    kerelDensityRaster_3 <- raster::mask(kerelDensityRaster_2,area_polygon)
+    setTxtProgressBar(pb, 60)
+    kerelDensityRaster_3@data@values[which(as.character(kerelDensityRaster_3@data@values) == "0")] <- NA
+    
+    reverse <- rev(RColorBrewer::brewer.pal(11,"Spectral"))
+    palRaster <- leaflet::colorNumeric(reverse, domain = kerelDensityRaster_3@data@values, na.color = "transparent")
+    setTxtProgressBar(pb, 80)
+    # Create map# Create maptest
+    map_2 <- leaflet::leaflet() %>%
+      leaflet::addTiles() %>%
+      leaflet::addPolygons(data = area_polygon) %>%
+      leaflet::addRasterImage(kerelDensityRaster_3,
+                              colors = palRaster,
+                              opacity = .8)
+    setTxtProgressBar(pb, 100)
+    close(pb)
+    return(map_2)
+  }else{
+    # create quick map to show the polygon and the points with the cluster IDs
+    map_1 <- leaflet::leaflet() %>% 
+      leaflet::addTiles() %>% 
+      leaflet::addPolygons(data = area_polygon) %>% 
+      leaflet::addCircleMarkers(
+        data = cluster_points %>% filter(distance<50),
+        fillColor = "#EE5858",
+        fillOpacity = 0.8,
+        stroke = T,
+        color = "#e1e1e1",
+        weight= 2,
+        radius = 5,
+        popup = ~ cluster_points[[column_waypoints_id_rlc]]
+        # clusterOptions = leaflet::markerClusterOptions()
+      ) %>% 
+      leaflet::addCircleMarkers(
+        data = cluster_points %>% filter(distance>50),
+        fillColor = "yellow",
+        fillOpacity = 0.8,
+        stroke = T,
+        color = "#e1e1e1",
+        weight= 2,
+        radius = 5,
+        popup = ~ cluster_points[[column_waypoints_id_rlc]]
+      )
+    return(map_1)
+  }
+    
 }
 
 ## Check distance from waypoints to cluster sample
@@ -158,13 +204,13 @@ check_waypoints_to_cluster_distance <- function(sampling_data,
   if(!geoshape_column_name %in% colnames(area_data)) stop("Make sure that the column name of the geoshape is correct.")
   
   waypoints <- rlc_data %>% 
-    select(column_waypoints_id_rlc,column_waypoints_lat,column_waypoints_long) %>% 
+    dplyr::select(column_waypoints_id_rlc,column_waypoints_lat,column_waypoints_long) %>% 
     unique() %>% 
     rename("show_cluster_id" = column_waypoints_id_rlc)%>% 
     st_as_sf(coords = c(column_waypoints_long,column_waypoints_lat), crs = 4326) 
   # Join sampling data with 
   clusters <- sampling_data %>% 
-    select(column_cluster_id_sampling,column_clusters_lat,column_clusters_long) %>% 
+    dplyr::select(column_cluster_id_sampling,column_clusters_lat,column_clusters_long) %>% 
     st_as_sf(coords = c(column_clusters_long,column_clusters_lat), crs = 4326) 
   
   # Join the two data together and calculate the distance between the two points
@@ -177,7 +223,7 @@ check_waypoints_to_cluster_distance <- function(sampling_data,
   # flag
   if(nrow(data_check) > 0) {
     cat(paste("Attention:\n\nThe following waypoints are far from the generated cluster point \nwith a distance larger than 50m.\n"))
-    print(knitr::kable(data_check %>%st_drop_geometry() %>% select(-c(geometry.x,geometry.y,line))))
+    print(knitr::kable(data_check %>%st_drop_geometry() %>% dplyr::select(-c(geometry.x,geometry.y,line))))
     map <- leaflet::leaflet() %>% 
       leaflet::addTiles() %>% 
       leaflet::addPolygons(data = area_polygon) %>% 
@@ -237,7 +283,7 @@ check_hh_in_area <- function(area_data,
   
   # read the household points from rlc and check if points are in polygon
   hh_points <- rlc_data %>% 
-    select(column_waypoints_id_rlc, column_hh_lat,column_hh_long) %>% 
+    dplyr::select(column_waypoints_id_rlc, column_hh_lat,column_hh_long) %>% 
     group_by(!!sym(column_waypoints_id_rlc)) %>% 
     mutate(hh_id = paste0(!!sym(column_waypoints_id_rlc), "_", row_number())) %>% 
     mutate_at(vars(c(column_hh_lat,column_hh_long)), as.numeric) %>% 
@@ -248,7 +294,7 @@ check_hh_in_area <- function(area_data,
   
   if(nrow(hh_points %>% filter(!intersect)) > 0) {
     cat(paste("Attention:\n\nThe following households are located outside of the sampling area \nwith a distance larger than 50m.\n"))
-    print(knitr::kable(hh_points %>% filter(!intersect) %>% select(-intersect) %>%st_drop_geometry()))
+    print(knitr::kable(hh_points %>% filter(!intersect) %>% dplyr::select(-intersect) %>%st_drop_geometry()))
   } else{
     cat("All your hh points are located inside the sampling area.")
   }
@@ -304,11 +350,11 @@ check_hh_to_waypoint_distance <- function(rlc_data,
   if(!geoshape_column_name %in% colnames(area_data)) stop("Make sure that the column name of the geoshape is correct.")
   
   hh_data <- rlc_data %>% 
-    select(column_waypoints_id_rlc,column_hh_lat,column_hh_long) %>% 
+    dplyr::select(column_waypoints_id_rlc,column_hh_lat,column_hh_long) %>% 
     st_as_sf(coords = c(column_hh_long,column_hh_lat), crs = 4326) 
   # Join sampling data with 
   waypoints <- rlc_data %>% 
-    select(column_waypoints_id_rlc,column_waypoints_lat,column_waypoints_long) %>% 
+    dplyr::select(column_waypoints_id_rlc,column_waypoints_lat,column_waypoints_long) %>% 
     st_as_sf(coords = c(column_waypoints_long,column_waypoints_lat), crs = 4326)
   
   # Join the two data together and calculate the distance between the two points
@@ -319,7 +365,7 @@ check_hh_to_waypoint_distance <- function(rlc_data,
   # flag
   if(nrow(data_check) > 0) {
     cat(paste("Attention:\n\nThe following hh points are far from the waypoint \nwith a distance larger than 50m.\n"))
-    print(knitr::kable(data_check  %>%st_drop_geometry() %>%  select(-c(geometry.x,geometry.y))))
+    print(knitr::kable(data_check  %>%st_drop_geometry() %>%  dplyr::select(-c(geometry.x,geometry.y))))
   } else {
     cat("All your hh points are close to the waypoints.")
   }
@@ -327,6 +373,10 @@ check_hh_to_waypoint_distance <- function(rlc_data,
   # create the lines between the waypoints and the hhs
   data_map <- left_join(hh_data %>% as_data_frame(),waypoints%>% as_data_frame(), by = column_waypoints_id_rlc,relationship = "many-to-many") %>% unique() %>%  
     mutate(line = st_sfc(mapply(function(a,b) {st_cast(st_union(a,b), "LINESTRING")}, geometry.x, geometry.y, SIMPLIFY = F))) 
+  
+  data_distance <- left_join(hh_data %>% as_data_frame(),waypoints%>% as_data_frame(), by = column_waypoints_id_rlc,relationship = "many-to-many") %>% 
+    mutate(distance = as.numeric(st_distance(geometry.x,geometry.y, by_element = T)))  %>% 
+    unique()%>% filter(distance > 50)
   
   # create the area of the geoshape file
   area_polygon <- create_rlc_area_geoshape(area_data = area_data,
@@ -379,11 +429,11 @@ check_hh_unique_to_waypoint <- function(area_data,
   if(!geoshape_column_name %in% colnames(area_data)) stop("Make sure that the column name of the geoshape is correct.")
   
   hh_data <- rlc_data %>% 
-    select(column_waypoints_id_rlc,column_hh_lat,column_hh_long) %>% 
+    dplyr::select(column_waypoints_id_rlc,column_hh_lat,column_hh_long) %>% 
     st_as_sf(coords = c(column_hh_long,column_hh_lat), crs = 4326) 
   
   waypoints <- rlc_data %>% 
-    select(column_waypoints_id_rlc,column_waypoints_lat,column_waypoints_long) %>% 
+    dplyr::select(column_waypoints_id_rlc,column_waypoints_lat,column_waypoints_long) %>% 
     st_as_sf(coords = c(column_waypoints_long,column_waypoints_lat), crs = 4326)
   
   # Join the two data together and calculate the distance between the two points
@@ -499,17 +549,17 @@ create_hh_density_weight <- function(area_data,
   
   ## HH Data
   hh_data <- rlc_data %>% 
-    select(column_waypoints_id_rlc,column_hh_lat,column_hh_long) %>% 
+    dplyr::select(column_waypoints_id_rlc,column_hh_lat,column_hh_long) %>% 
     st_as_sf(coords = c(column_hh_long,column_hh_lat), crs = 4326) 
   
   ## Waypoints
   waypoints <- rlc_data %>% 
-    select(column_waypoints_id_rlc,column_waypoints_lat,column_waypoints_long) %>% 
+    dplyr::select(column_waypoints_id_rlc,column_waypoints_lat,column_waypoints_long) %>% 
     st_as_sf(coords = c(column_waypoints_long,column_waypoints_lat), crs = 4326)
   
   # Join the two data together and calculate the distance between the two points
-  data_max_distance <- left_join(hh_data %>% as_data_frame(),waypoints%>% as_data_frame(), by = column_waypoints_id_rlc,relationship = "many-to-many") %>% 
-    mutate(distance = as.numeric(st_distance(geometry.x,geometry.y, by_element = T))) %>% unique() %>% 
+  data_max_distance <- left_join(hh_data %>% as_tibble(),waypoints%>% as_tibble(), by = column_waypoints_id_rlc,relationship = "many-to-many") %>% 
+    mutate(distance = as.numeric(st_distance(geometry.x,geometry.y, by_element = T))) %>% unique()%>% 
     group_by(!!sym(column_waypoints_id_rlc))%>% 
     filter(distance == max(distance)) ## Filter for the furthest distance
   
@@ -521,7 +571,7 @@ create_hh_density_weight <- function(area_data,
     
   hh_density_cluster <- hh_density_cluster %>%
     mutate(weight = hhd_cluster/avg_hhd_total_area) %>% 
-    select(column_waypoints_id_rlc,hhd_cluster,weight)
+    dplyr::select(column_waypoints_id_rlc,hhd_cluster,weight)
   
   if(nrow(hh_density_cluster)>0){
     cat(paste("Here is the generated weights table."))
@@ -529,22 +579,8 @@ create_hh_density_weight <- function(area_data,
   } else {
     cat(paste0())
   }
- #  # create the area of the geoshape file
- #  area_polygon <- create_rlc_area_geoshape(area_data = area_data,
- #                                           geoshape_column_name = "geoshape")
- #  
- #  # Create map
- # leaflet::leaflet() %>% 
- #    leaflet::addTiles() %>% 
- #    leaflet::addPolygons(data = area_polygon) %>%
- #    leaflet.extras::addHeatmap(data = hh_density_cluster,
- #                               lng = ~ cluster_long,
- #                               lat = ~ cluster_lat,
- #                               intensity = ~ weight*0.1,
- #                               blur = 15, max = 5, radius = 205)
   return(hh_density_cluster)
 }
-
 
 
 estimate_population_area <- function(area_data,
@@ -573,24 +609,22 @@ estimate_population_area <- function(area_data,
   
   ## Calculate the average hh
   average_people_per_hh <- mean(as.numeric(rlc_data[[column_num_hh_members]]), na.rm=T)
-  if(is.null(average_people_per_hh)){
-    cat("Average number of people per household couldn't be calcualted.\n\nCheck your inputs.")
-  } else {
-    cat(paste0("Average number of people per household: ", average_people_per_hh,"\n\n"))
-  }
-  
   ## calculate estimate number of hhs and peoples for total area
   average_hhd_area <- mean(hh_density_cluster$hhd_cluster, na.rm = T)
   #HH
   est_total_hh_area <- round(average_hhd_area * sum_area,0)
   #Peopl
   est_total_people_area <- round(est_total_hh_area * average_people_per_hh,0)
-  if(is.null(est_total_hh_area)|is.null(est_total_people_area)){
+  if(is.null(est_total_hh_area)|is.null(est_total_people_area)|is.null(average_people_per_hh)){
     cat("Estimation of number of household and people couldn't be calcualted.\n\nCheck your inputs.\n\n")
   } else {
     cat(paste0("Estimated number of household for the total area: ", est_total_hh_area,"\n\n"))
     cat(paste0("Estimated number of people for the total area: ", est_total_people_area,"\n\n"))
+    cat(paste0("Average number of people per household: ", average_people_per_hh,"\n\n"))
   }
+  
 }
+
+
 
 
