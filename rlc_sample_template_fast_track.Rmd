@@ -35,8 +35,8 @@ htmltools::img(src = knitr::image_uri("resources/Logo_Reach_RGB_1.png"),
 
   
   ## Sourcing the functions
-  source("src/rlc_quality_checks.R")
-  
+  source("src/rlc_quality_checks_fast_track.R")
+  create_density_map_idw
 ```
 
 # {.tabset}
@@ -63,6 +63,7 @@ In this output you will find the following tabs:
 * <strong>Distance HHs to clusters</strong>: <em> Check the distance between the assessed HHs and the sampled cluster points (50m threshold)</em>
 * <strong>Duplicated clusters/HHs</strong>: <em> Check duplication between clusters and check if clusters share same HHs.</em>
 * <strong>Household Density</strong>: <em> Calculate HH Density & Cluster Weights</em>
+* <strong>IDW</strong>: <em>Spatial Interpolation using Inverse Distance Weighing (IDW)</em>
 * <strong>Estimation of Population</strong>: <em> Estimate Population of Sampled Area. (Under Revision)</em>
 
 ### Feedback
@@ -118,7 +119,7 @@ This part is checking if the field team did follow the Sampling methodology and 
 ## CHECK the wayhpoints are close to their generated cluster points (50 m threshold)
 check_waypoints_to_cluster_distance(sampling_data = sampling_data, rlc_data = rlc_data,area_data = area_data)
 ```
-In case any point is was not in teh 50 m buffer, a map will be generated below to show the difference.
+In case any point is was not in the 50 m buffer, a map will be generated below to show the difference.
 
 ## HHs inside sampling area
 
@@ -143,11 +144,33 @@ check_hh_unique_to_waypoint(area_data, rlc_data)
 
 ## Household Density
 
+### Table of household density and weights
+
 ```{r}
 ## Create hh_density_weights
 hh_density_cluster <- create_hh_density_weight(area_data, rlc_data)
-write_xlsx(dplyr::select(hh_density_cluster,-c(hhd_cluster)), paste0("output/", strings['dataset.name.short'], "_hhd_density_cluster_weight_", strings['out_date'],".xlsx"))
+write_xlsx(dplyr::select(hh_density_cluster,-c(hhd_cluster)), paste0("./output/", strings['dataset.name.short'], "_hhd_density_cluster_weight_", strings['out_date'],".xlsx"))
 ```
+
+
+## IDW
+
+Inverse distance weighted (IDW) interpolation determines cell values using a linearly weighted combination of a set of sample points. The weight is a function of inverse distance. The surface being interpolated should be that of a locationally dependent variable. This method assumes that the variable being mapped decreases in influence with distance from its sampled location.
+
+- Reference: <a href="https://pro.arcgis.com/en/pro-app/latest/tool-reference/3d-analyst/how-idw-works.htm#:~:text=The%20Power%20parameter%20lets%20you,put%20on%20the%20nearest%20points.">ArcGIS</a>
+
+<strong> Please note:</strong> The Power parameter lets you control the significance of known points on the interpolated values based on their distance from the output point. It is a positive, real number, and its default value is 2. By defining a higher power value, more emphasis can be put on the nearest points.
+
+```{r}
+# Create the map
+create_density_map_idw(area_data = area_data,
+                   hh_density_cluster = hh_density_cluster,
+                   power_idw = 2,
+                   ncell_raster = 500)
+                   
+```
+
+
 
 ## Estimation of Population
 

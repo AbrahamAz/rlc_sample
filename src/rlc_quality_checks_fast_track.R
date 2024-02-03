@@ -643,18 +643,12 @@ create_density_map_idw <- function(area_data,
   
   cat(paste0("The below plot is use the Mean Squared Error (mse) to compute the average squared difference between the powers and detect the optimal power"))
   
-  plot(idw(ppp_data, power=0.1, at="pixels"),col=heat.colors(20), main="power = 0.1")
-  readline(prompt = "Please [Enter] to continue")
+  plot(idw(ppp_data, power=0.1, at="pixels"),col=heat.colors(20), main="power = 0.1") 
   plot(idw(ppp_data, power=1, at="pixels"),col=heat.colors(20), main="power = 1")
-  readline(prompt = "Please [Enter] to continue")
   plot(idw(ppp_data, power=2, at="pixels"),col=heat.colors(20), main="power = 2")
-  readline(prompt = "Please [Enter] to continue")
   plot(idw(ppp_data, power=4, at="pixels"),col=heat.colors(20), main="power = 4")
-  readline(prompt = "Please [Enter] to continue")
   plot(idw(ppp_data, power=6, at="pixels"),col=heat.colors(20), main="power = 6")
-  readline(prompt = "Please [Enter] to continue")
   plot(idw(ppp_data, power=8, at="pixels"),col=heat.colors(20), main="power = 8") 
-  readline(prompt = "Please [Enter] to continue")
   
   powers <- seq(0.001, 10, 0.01)
   mse_result <- NULL
@@ -670,10 +664,9 @@ create_density_map_idw <- function(area_data,
   plot(powers, mse_result) +
     abline(v = optimal_power,
            col = "red") 
-  readline(prompt = "Please [Enter] to continue")
   
   cat(paste0("The optimal power detected to be used is: ",optimal_power,"\n\nHowever the function by default set the power to 2.\n\n"))
-  cat(paste0("You can change it by going to rlc_sample_template.Rmd, (line 168) and change the 2 to 999 for optimal\n\nor\n\nany other number.\n\nThe plot is your reference.\n\n"))
+  cat(paste0("You can change it by going to the src folder, and open rlc_sample_template.Rmd, (line 168) and change the 2 to 999 for optimal\n\nor\n\nany other number.\n\nThe plot is your reference.\n\n"))
   cat(paste0("You can change the number of cells generated inside the defined area for the IDW calculation. By default, it is 500.\n\n"))
   
   # cereate the idw raster
@@ -686,7 +679,7 @@ create_density_map_idw <- function(area_data,
   cat(paste0("By default, IDW calculation assumes that the data point locations are fixed,\nthat is, the standard error only takes into account the variability in the mark values,\nand not the variability due to randomness of the data point locations.\n"))
   cat(paste0("Here is an example if we set IDW to estimate standard error of points.\n"))
   plot(idw(ppp_data, power= power_idw, se=TRUE)$SE,col=heat.colors(20), main="SE Enabled")
-  readline(prompt = "Please [Enter] to continue")
+
   # set crs for the raster
   crs(idw_raster) <- crs
   

@@ -14,7 +14,7 @@ strings <- c(
 
 # <- additional indicators and grouping variables are added here 
 ## TABULAR  -------------------------------------------------------------------
-rmarkdown::render('rlc_sample_template.Rmd',
+rmarkdown::render('rlc_sample_template_fast_track.Rmd',
 output_file = paste0("output/", strings['dataset.name.short'], "_Quality_Check_and_weighting_calculation_", strings['out_date'],".html"))
 cat("\n> Quality Check completed! You can check your output folder.")
 
