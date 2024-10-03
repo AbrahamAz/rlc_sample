@@ -36,7 +36,6 @@ htmltools::img(src = knitr::image_uri("resources/Logo_Reach_RGB_1.png"),
   
   ## Sourcing the functions
   source("src/rlc_quality_checks_fast_track.R")
-  create_density_map_idw
 ```
 
 # {.tabset}
