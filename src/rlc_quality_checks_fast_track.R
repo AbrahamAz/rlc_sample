@@ -710,7 +710,7 @@ estimate_population_area <- function(area_data,
                               column_waypoints_id_rlc = "cluster_ID",
                               column_area = "sum_area",
                               calculate_area = T,
-                              column_num_hh_members = "num_hh_members",
+                              column_num_hh_members = "num_hh",
                               geoshape_column_name = "geoshape") {
   # Make the dataset dataframes
   area_data <- as.data.frame(area_data)

@@ -6,6 +6,6 @@ pacman::p_load(docstring, tidyverse, readxl, writexl, openxlsx, stringr,
                sf, geosphere, qdapRegex, cluster, randomcoloR, scales, knitr,svDialogs,
                sfheaders, raster,leaflet.extras,data.table,KernSmooth,RColorBrewer,spatstat,
                Metrics,berryFunctions)
-install.packages('resources/rgdal_1.6-7.tar.gz')
+install.packages('resources/rgdal_1.6-7.tar.gz',repos = NULL, quiet = TRUE)
 options(scipen = 999)
 
