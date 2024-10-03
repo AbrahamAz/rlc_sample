@@ -1,0 +1,184 @@
+---
+title: "RLC Quality Check Report and Weighting Production"
+subtitle: "`r strings['dataset.name.short']`"
+output: html_document
+---
+
+<style>
+.tocify-subheader {
+  font-size: 0.7em;
+}
+.tocify-item {
+  font-size: 0.85em;
+  padding-left: 25px;
+  text-indent: 0;
+}
+</style>
+
+```{r logo, echo=FALSE}
+htmltools::img(src = knitr::image_uri("resources/Logo_Reach_RGB_1.png"), 
+               alt = "REACH logo",
+               style = 'position:absolute; top:0; right:0; padding:0; margin:20; width:250px')
+```
+
+
+
+```{r setup, include=FALSE}
+  knitr::opts_chunk$set(echo=FALSE, warning=FALSE, message=FALSE)
+  options(scipen = 999)
+  rm(list=ls()[!ls() %in% c( "strings")])
+  
+  ## Read the data
+  area_data <- read_xlsx(strings['sampling_data'], col_types = "text", sheet = 1)
+  sampling_data <- read_xlsx(strings['sampling_data'],col_types = "text", sheet = "select_final_set")
+  rlc_data <- read_xlsx(strings['rlc_data'], col_types = "text", sheet = "households")
+
+  
+  ## Sourcing the functions
+  source("src/rlc_quality_checks_fast_track.R")
+  create_density_map_idw
+```
+
+# {.tabset}
+## Introduction
+
+This document include a detailed quality check on the assessment that you conducted (`r strings['dataset.name']`). 
+
+Along this HTML document, you will find in the output/ folder an excel file. 
+
+In case you don't find this file, this means that there was some issues during the execution of the script. However, I am pretty sure if the script give a success message, this means that a file should also be included there. 
+
+#### <strong>PLEASE ATTENTION</strong>
+
+<h4 style='color: "red"'>Before using the final outputted weight in the file, please make sure that you check all the tabs of this quality check report and confirm a successful methodology implementation. </h4>
+
+### What to find in this output
+
+In this output you will find the following tabs:
+
+* <strong>ID MATCHING</strong>: <em>Check Cluster_ID between sampling and rlc data are matching</em>
+* <strong>Clusters inside Area</strong>: <em> Check Clusters are inside the sampling area (50m threshold)</em>
+* <strong>Clusters follow RLC sampling</strong>: <em> Check assessed clusters are random and follow the sampling (50m threshold)</em>
+* <strong>HHs inside sampling area</strong>: <em> Check assessed HHs are inside the sampling are (50m threshold)</em>
+* <strong>Distance HHs to clusters</strong>: <em> Check the distance between the assessed HHs and the sampled cluster points (50m threshold)</em>
+* <strong>Duplicated clusters/HHs</strong>: <em> Check duplication between clusters and check if clusters share same HHs.</em>
+* <strong>Household Density</strong>: <em> Calculate HH Density & Cluster Weights</em>
+* <strong>IDW</strong>: <em>Spatial Interpolation using Inverse Distance Weighing (IDW)</em>
+* <strong>Estimation of Population</strong>: <em> Estimate Population of Sampled Area. (Under Revision)</em>
+
+### Feedback
+
+Feedback on improvements to this product can be done through reaching out to: 
+
+* impact.geneva.phu@impact-initiatives.org
+* abraham.azar@impact-initiatives.org or 
+
+## ID MATCHING
+
+```{r}
+## CHECK the clusters and the waypoints ID matches
+check_waypoints_to_cluster_id(sampling_data, rlc_data)
+```
+
+## Cluster inside Area
+
+### Locations of each assessed cluster.
+
+```{r}
+## CHECK the waypoints are inside the polygon (50 m threshold)
+map_1 <- check_waypoints_in_area(area_data = area_data, rlc_data = rlc_data,create_heat_map = F)
+```
+
+
+```{r}
+if(is.null(map_1)){
+  cat("An error occured generating the map.")
+} else {
+  map_1
+}
+```
+
+### HeatMap of the assessed cluster.
+```{r}
+## CHECK the waypoints are inside the polygon (50 m threshold)
+map_2 <- check_waypoints_in_area(area_data = area_data, rlc_data = rlc_data,create_heat_map = T)
+```
+
+```{r}
+if(is.null(map_1)){
+  cat("An error occured generating the map.")
+} else {
+  map_2
+}
+```
+
+## Clusters follow RLC sampling
+
+This part is checking if the field team did follow the Sampling methodology and assessed the right locations.
+```{r}
+## CHECK the wayhpoints are close to their generated cluster points (50 m threshold)
+check_waypoints_to_cluster_distance(sampling_data = sampling_data, rlc_data = rlc_data,area_data = area_data)
+```
+In case any point is was not in the 50 m buffer, a map will be generated below to show the difference.
+
+## HHs inside sampling area
+
+```{r}
+## CHECK the hh points are inside the polygon (50 m threshold)
+check_hh_in_area(area_data = area_data, rlc_data = rlc_data)
+```
+
+## Distance HHs to clusters
+
+```{r}
+## CHECK the hh points are close to their generated waypoints (50 m threshold)
+check_hh_to_waypoint_distance(rlc_data = rlc_data,area_data = area_data)
+```
+
+## Duplicated clusters and HHs
+
+```{r}
+## CHECK the hh are unique to the cluster
+check_hh_unique_to_waypoint(area_data, rlc_data)
+```
+
+## Household Density
+
+### Table of household density and weights
+
+```{r}
+## Create hh_density_weights
+hh_density_cluster <- create_hh_density_weight(area_data, rlc_data)
+write_xlsx(dplyr::select(hh_density_cluster,-c(hhd_cluster)), paste0("./output/", strings['dataset.name.short'], "_hhd_density_cluster_weight_", strings['out_date'],".xlsx"))
+```
+
+
+## IDW
+
+Inverse distance weighted (IDW) interpolation determines cell values using a linearly weighted combination of a set of sample points. The weight is a function of inverse distance. The surface being interpolated should be that of a locationally dependent variable. This method assumes that the variable being mapped decreases in influence with distance from its sampled location.
+
+- Reference: <a href="https://pro.arcgis.com/en/pro-app/latest/tool-reference/3d-analyst/how-idw-works.htm#:~:text=The%20Power%20parameter%20lets%20you,put%20on%20the%20nearest%20points.">ArcGIS</a>
+
+<strong> Please note:</strong> The Power parameter lets you control the significance of known points on the interpolated values based on their distance from the output point. It is a positive, real number, and its default value is 2. By defining a higher power value, more emphasis can be put on the nearest points.
+
+```{r}
+# Create the map
+create_density_map_idw(area_data = area_data,
+                   hh_density_cluster = hh_density_cluster,
+                   power_idw = 2,
+                   ncell_raster = 500)
+                   
+```
+
+
+
+## Estimation of Population
+
+<strong>Please note that these numbers are not the exact estimation of the population of the sampled area.</strong> 
+It is suggested to triangulate with other numbers such as the World Pop, etc. 
+
+```{r}
+## ESTIMATION
+estimate_population_area(area_data,rlc_data,hh_density_cluster)
+```
+
